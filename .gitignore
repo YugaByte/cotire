@@ -3,3 +3,5 @@
 .DS_Store
 .project
 .idea
+.session.vim
+.session.vim.*

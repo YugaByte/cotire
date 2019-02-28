@@ -27,6 +27,22 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 #=============================================================================
 
+#
+# The following only applies to changes made to this file as part of YugaByte development.
+#
+# Portions Copyright (c) YugaByte, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.	You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License
+# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied.	See the License for the specific language governing permissions and limitations
+# under the License.
+#
+
 if(__COTIRE_INCLUDED)
 	return()
 endif()
@@ -2411,14 +2427,31 @@ function (cotire_setup_pch_file_compilation _language _target _targetScript _pre
 			# re-compilation when the compiler executable is updated. This prevents "created by a different GCC executable"
 			# warnings when the precompiled header is included.
 			get_filename_component(_realCompilerExe "${CMAKE_${_language}_COMPILER}" ABSOLUTE)
+
+			# -------------------------------------------------------------------------------------
+			# YugaByte-specific change
+			# -------------------------------------------------------------------------------------
+
+			# Here, cotire used to make precompiled header compilation depend on the actual compiler
+			# executable used to force re-compilation when the compiler executable is updated. This
+			# prevents "created by a different GCC executable" warnings when the precompiled header is
+			# included.
+
+			# This does not work for YugaByte because we provide a "compiler wrapper" script and we don't
+			# want to force rebuilding the entire tree every time the compiler wrapper changes. However,
+			# we use separate build directories for different compilers (e.g. gcc and clang), so we are
+			# not likely to run into the "created by a different executable" issue.
+
 			if (COTIRE_DEBUG)
-				message (STATUS "add_custom_command: OUTPUT ${_pchFile} ${_cmds} DEPENDS ${_prefixFile} ${_realCompilerExe} IMPLICIT_DEPENDS ${_language} ${_prefixFile}")
+				# ${_realCompilerExe} was removed by YugaByte from the following line:
+				message (STATUS "add_custom_command: OUTPUT ${_pchFile} ${_cmds} DEPENDS ${_prefixFile} IMPLICIT_DEPENDS ${_language} ${_prefixFile}")
 			endif()
 			set_property (SOURCE "${_pchFile}" PROPERTY GENERATED TRUE)
 			add_custom_command(
 				OUTPUT "${_pchFile}"
 				COMMAND ${_cmds}
-				DEPENDS "${_prefixFile}" "${_realCompilerExe}"
+				# "${_realCompilerExe}" was removed by YugaByte from the following line:
+				DEPENDS "${_prefixFile}"
 				IMPLICIT_DEPENDS ${_language} "${_prefixFile}"
 				WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
 				COMMENT "Building ${_language} precompiled header ${_pchFileLogPath}"
@@ -2653,12 +2686,21 @@ function (cotire_setup_prefix_generation_command _language _target _targetScript
 	cotire_set_cmd_to_prologue(_prefixCmd)
 	list (APPEND _prefixCmd -P "${COTIRE_CMAKE_MODULE_FILE}" "prefix" "${_targetScript}" "${_prefixFile}" ${_unityFiles})
 	set_property (SOURCE "${_prefixFile}" PROPERTY GENERATED TRUE)
+
+	# ---------------------------------------------------------------------------------------------
+	# YugaByte-specific change
+	# ---------------------------------------------------------------------------------------------
+
+	# This functionality has been disabled in YugaByte:
 	# make prefix header generation depend on the actual compiler executable used to force
 	# re-generation when the compiler executable is updated. This prevents "file not found"
 	# errors for compiler version specific system header files.
-	get_filename_component(_realCompilerExe "${CMAKE_${_language}_COMPILER}" ABSOLUTE)
+
+	# See a more detailed explanation in cotire_setup_pch_file_compilation.
+
 	if (COTIRE_DEBUG)
-		message (STATUS "add_custom_command: OUTPUT ${_prefixFile} COMMAND ${_prefixCmd} DEPENDS ${_unityFile} ${_dependencySources} ${_realCompilerExe}")
+		# ${_realCompilerExe} was removed by YugaByte from the following line:
+		message (STATUS "add_custom_command: OUTPUT ${_prefixFile} COMMAND ${_prefixCmd} DEPENDS ${_unityFile} ${_dependencySources}")
 	endif()
 	if (MSVC_IDE)
 		file (TO_NATIVE_PATH "${_prefixFile}" _prefixFileLogPath)
@@ -2690,7 +2732,8 @@ function (cotire_setup_prefix_generation_command _language _target _targetScript
 	add_custom_command(
 		OUTPUT "${_prefixFile}" "${_prefixFile}.log"
 		COMMAND ${_prefixCmd}
-		DEPENDS ${_unityFiles} ${_dependencySources} "${_realCompilerExe}"
+		# "${_realCompilerExe}" was removed by YugaByte from the following line:
+		DEPENDS ${_unityFiles} ${_dependencySources}
 		COMMENT "${_comment}"
 		WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
 		VERBATIM)
@@ -3557,6 +3600,25 @@ function (cotire_setup_clean_all_target)
 endfunction()
 
 function (cotire)
+	# ---------------------------------------------------------------------------------------------
+	# YugaByte-specific change
+	# ---------------------------------------------------------------------------------------------
+	#
+	# We're only enabling cotire if YB_USE_COTIRE is set.
+	if (NOT "${YB_USE_COTIRE}" STREQUAL "1" AND NOT "$ENV{YB_USE_COTIRE}" STREQUAL "1")) {
+		# Simulating a global variable using a property as described at https://goo.gl/5y1gDB.
+		# The purpose of this is simply to avoid printing the "skipping cotire" message multiple times.
+		GET_PROPERTY(COTIRE_REPORTED_SKIP_REASON GLOBAL PROPERTY COTIRE_REPORTED_SKIP_REASON_PROPERTY)
+		if ("${COTIRE_REPORTED_SKIP_REASON}" STREQUAL "")
+			SET_PROPERTY(GLOBAL PROPERTY COTIRE_REPORTED_SKIP_REASON_PROPERTY 1)
+			message("YB_USE_COTIRE CMake/environment variable not set to '1', skipping cotire")
+		endif()
+		return()
+	endif()
+	# ---------------------------------------------------------------------------------------------
+	# End of YugaByte-specific change
+	# ---------------------------------------------------------------------------------------------
+
 	set(_options "")
 	set(_oneValueArgs "")
 	set(_multiValueArgs LANGUAGES CONFIGURATIONS)
